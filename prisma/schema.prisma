@@ -1,0 +1,164 @@
+// IT Inventory Management - Prisma Schema
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// CATEGORIES: Cartridge / Toner / Tinta Botol
+// ─────────────────────────────────────────
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique // "Cartridge", "Toner", "Tinta Botol"
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("categories")
+}
+
+// ─────────────────────────────────────────
+// BRANDS: HP, Canon, Epson, dll.
+// ─────────────────────────────────────────
+model Brand {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("brands")
+}
+
+// ─────────────────────────────────────────
+// PRINTER MODELS: Untuk pencarian kompatibilitas
+// ─────────────────────────────────────────
+model PrinterModel {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique // "HP LaserJet Pro M404dn"
+  type        String?   // "Laser", "Inkjet"
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("printer_models")
+}
+
+// ─────────────────────────────────────────
+// DEPARTMENTS: Unit/Divisi peminta stok
+// ─────────────────────────────────────────
+model Department {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique // "IT", "Finance", "HR", dll.
+  code      String     @unique // "IT-001", "FIN-001"
+  picName   String?    @map("pic_name") // Nama PIC departemen
+  stockOuts StockOut[]
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@map("departments")
+}
+
+// ─────────────────────────────────────────
+// PRODUCTS: Master data item inventori
+// ─────────────────────────────────────────
+model Product {
+  id             Int          @id @default(autoincrement())
+  name           String       // "HP 678 Black Cartridge"
+  sku            String       @unique // "HP-678-BK"
+  categoryId     Int          @map("category_id")
+  brandId        Int          @map("brand_id")
+  printerModelId Int?         @map("printer_model_id")
+  color          String?      // "Black", "Cyan", "Magenta", "Yellow"
+  currentStock   Int          @default(0) @map("current_stock")
+  minStock       Int          @default(3) @map("min_stock") // threshold low-stock alert
+  unit           String       @default("pcs") // "pcs", "botol", "box"
+  description    String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  // Relasi
+  category     Category      @relation(fields: [categoryId], references: [id])
+  brand        Brand         @relation(fields: [brandId], references: [id])
+  printerModel PrinterModel? @relation(fields: [printerModelId], references: [id])
+  stockIns     StockIn[]
+  stockOuts    StockOut[]
+  stockLogs    StockLog[]    // ← relasi balik untuk audit trail
+
+  @@map("products")
+}
+
+// ─────────────────────────────────────────
+// STOCK IN: Pencatatan barang masuk
+// ─────────────────────────────────────────
+model StockIn {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  quantity     Int      // jumlah masuk (> 0)
+  receivedDate DateTime @default(now()) @map("received_date")
+  supplier     String?  // nama supplier/vendor
+  poNumber     String?  @map("po_number") // nomor PO
+  receivedBy   String   @map("received_by") // nama penerima
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  product  Product   @relation(fields: [productId], references: [id])
+  stockLog StockLog? // relasi ke audit log
+
+  @@map("stock_in")
+}
+
+// ─────────────────────────────────────────
+// STOCK OUT: Pencatatan barang keluar
+// ─────────────────────────────────────────
+model StockOut {
+  id           Int        @id @default(autoincrement())
+  productId    Int        @map("product_id")
+  departmentId Int        @map("department_id")
+  quantity     Int        // jumlah keluar (> 0)
+  takenDate    DateTime   @default(now()) @map("taken_date")
+  takenBy      String     @map("taken_by") // nama pengambil
+  purpose      String?    // keperluan/keterangan
+  notes        String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  product    Product    @relation(fields: [productId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+  stockLog   StockLog?  // relasi 1-to-1 ke log
+
+  @@map("stock_out")
+}
+
+// ─────────────────────────────────────────
+// STOCK LOGS: Audit trail setiap perubahan stok
+// Mencatat stok sebelum & sesudah setiap transaksi
+// ─────────────────────────────────────────
+model StockLog {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  stockOutId   Int?     @unique @map("stock_out_id")  // nullable: log bisa dari stok masuk juga
+  stockInId    Int?     @unique @map("stock_in_id")
+  type         String   // "STOCK_OUT" | "STOCK_IN" | "ADJUSTMENT"
+  quantity     Int      // jumlah perubahan (selalu positif)
+  stockBefore  Int      @map("stock_before")  // stok sebelum transaksi
+  stockAfter   Int      @map("stock_after")   // stok sesudah transaksi
+  performedBy  String   @map("performed_by")  // nama user/sistem
+  referenceId  String?  @map("reference_id")  // PO number, ID transaksi, dll
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  product  Product   @relation(fields: [productId], references: [id])
+  stockOut StockOut? @relation(fields: [stockOutId], references: [id])
+  stockIn  StockIn?  @relation(fields: [stockInId],  references: [id])
+
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("stock_logs")
+}
+

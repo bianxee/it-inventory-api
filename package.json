@@ -1,0 +1,29 @@
+{
+  "name": "it-inventory-api",
+  "version": "1.0.0",
+  "description": "IT Inventory Management API - Cartridge, Toner & Ink",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+   "dev": "nodemon src/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "test:transaction": "node tests/transaction.test.js",
+    "test:api": "node tests/api.test.js",
+    "test": "node tests/transaction.test.js && node tests/api.test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0",
+    "express": "^4.18.2",
+    "zod": "^3.22.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3",
+    "prisma": "^5.10.0"
+  }
+}
