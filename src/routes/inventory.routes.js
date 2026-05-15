@@ -87,6 +87,17 @@ router.get('/stok/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /departments ─────────────────────────────────────────
+router.get('/departments', async (req, res, next) => {
+  try {
+    const departments = await prisma.department.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, code: true, picName: true },
+    });
+    res.json({ success: true, data: departments });
+  } catch (err) { next(err); }
+});
+
 // ── POST /stok-keluar  ← TRANSACTIONAL ──────────────────────
 router.post('/stok-keluar', validate(stockOutSchema), processStockOut);
 
@@ -116,11 +127,9 @@ router.get('/alert', async (req, res, next) => {
   try {
     const threshold = req.query.threshold ? parseInt(req.query.threshold) : null;
 
-    const items = await prisma.product.findMany({
-      where: threshold !== null
-        ? { currentStock: { lte: threshold } }
-        : { currentStock: { lte: 3 } },
-      orderBy: [{ currentStock: 'asc' }, { name: 'asc' }],
+    // Ambil semua produk lalu filter yang stoknya <= minStock
+    // (menghindari raw query yang tidak kompatibel)
+    const allProducts = await prisma.product.findMany({
       include: {
         category:     { select: { name: true } },
         brand:        { select: { name: true } },
@@ -128,17 +137,28 @@ router.get('/alert', async (req, res, next) => {
       },
     });
 
+    const items = allProducts.filter((p) =>
+      threshold !== null
+        ? p.currentStock <= threshold
+        : p.currentStock <= p.minStock
+    ).sort((a, b) => a.currentStock - b.currentStock || a.name.localeCompare(b.name));
+
     const fmt = (p) => ({
-      id: p.id, nama: p.name, sku: p.sku,
-      kategori: p.category.name, brand: p.brand.name,
+      id:           p.id,
+      nama:         p.name,
+      sku:          p.sku,
+      kategori:     p.category.name,
+      brand:        p.brand.name,
       printerModel: p.printerModel?.name ?? '-',
-      stokSaat: p.currentStock, stokMinimum: p.minStock,
-      unit: p.unit, kekurangan: Math.max(0, p.minStock - p.currentStock),
-      status: p.currentStock === 0 ? 'HABIS' : 'MENIPIS',
+      stokSaat:     p.currentStock,
+      stokMinimum:  p.minStock,
+      unit:         p.unit,
+      kekurangan:   Math.max(0, p.minStock - p.currentStock),
+      status:       p.currentStock === 0 ? 'HABIS' : 'MENIPIS',
     });
 
     res.json({
-      success:  true,
+      success:   true,
       ringkasan: {
         totalAlert:  items.length,
         itemHabis:   items.filter((p) => p.currentStock === 0).length,
